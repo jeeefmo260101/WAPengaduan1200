@@ -16,33 +16,6 @@
             font-family: 'Inter', sans-serif;
             background-color: #f0f4f8;
         }
-        .status-badge {
-            padding: 2px 8px;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            white-space: nowrap;
-        }
-        .status-baru { background-color: #e0f2fe; color: #0ea5e9; }
-        .status-menunggu-jawaban-sme { background-color: #fef9c3; color: #eab308; }
-        .status-siap-direview { background-color: #dcfce7; color: #22c55e; }
-        .status-selesai { background-color: #f3f4f6; color: #6b7280; }
-        .status-lewat-sla { background-color: #fee2e2; color: #ef4444; }
-        .sidebar-item.active {
-            background-color: #1e40af;
-            color: #ffffff;
-            font-weight: 600;
-        }
-        .modal-overlay {
-            transition: opacity 0.3s ease;
-        }
-        .highlight-card {
-            border: 2px solid #2563eb;
-            box-shadow: 0 0 15px rgba(37, 99, 235, 0.3);
-            transform: scale(1.02);
-            transition: all 0.3s ease-in-out;
-        }
         .timeline-item::before {
             content: '';
             position: absolute;
@@ -67,6 +40,11 @@
         .rating .star:hover,
         .rating .star.selected {
             color: #facc15; /* yellow-400 */
+        }
+        .survey-option.selected {
+            background-color: #dcfce7 !important; /* green-100 */
+            color: #166534 !important; /* green-800 */
+            border-color: #22c55e !important; /* green-500 */
         }
     </style>
 </head>
@@ -104,7 +82,7 @@
         // --- INITIAL STATE & DATA SIMULASI ---
         const defaultComplaintDetail = 'Selamat siang. Saya ingin melaporkan pelayanan di Kantor BPS Kota Medan. Petugas di loket 3 sangat tidak ramah dan tidak mau menjelaskan prosedur dengan baik saat saya bertanya tadi pagi.';
         const initialState = {
-            currentStep: 0,
+            currentStep: -1, // Start at -1 for the login screen
             ppidInbox: [],
             complaints: [
                 { id: 2, no_tiket: 'BPS-PENG-2507-002', status: 'Siap Direview', subjek_pengaduan: 'Dugaan pungli oleh oknum petugas', ditugaskan_ke: 'Tim Investigasi', pelapor: '+62857xxxx5678', detail: 'Ada oknum petugas berinisial A yang meminta "uang rokok" untuk mempercepat proses layanan. Mohon ditindaklanjuti.', jawaban_sme: 'Setelah dilakukan pengecekan awal melalui CCTV dan wawancara saksi, kami menemukan indikasi kuat adanya pelanggaran. Tim akan melakukan pemeriksaan lebih lanjut sesuai prosedur internal. Terlampir adalah notulen investigasi awal.', lampiran_sme: 'notulen_investigasi.pdf' },
@@ -130,7 +108,8 @@
             { role: 'sme', title: 'SME Menjawab Aduan', icon: 'user-check' },
             { role: 'admin', title: 'Admin Review & Kirim Jawaban', icon: 'check-circle-2' },
             { role: 'pelapor', title: 'Pelapor Menerima Jawaban', icon: 'mail-check' },
-            { role: 'pelapor', title: 'Pelapor Mengisi Survei', icon: 'star' }
+            { role: 'pelapor', title: 'Pelapor Mengisi Survei', icon: 'star' },
+            { role: 'selesai', title: 'Simulasi Selesai', icon: 'party-popper' }
         ];
 
         const mainContent = document.getElementById('main-content');
@@ -152,95 +131,103 @@
             lucide.createIcons();
         }
 
-        function renderInitialView() {
+        function renderLoginView() {
             mainContent.innerHTML = `
                 <div class="flex flex-col items-center justify-center h-full text-center bg-white rounded-2xl shadow-lg p-8">
                     <div class="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-6">
-                        <i data-lucide="play-circle" class="w-12 h-12 text-blue-600"></i>
+                        <i data-lucide="shield-check" class="w-12 h-12 text-blue-600"></i>
                     </div>
-                    <h2 class="text-3xl font-bold mb-2">Selamat Datang di Simulasi Pengaduan BPS</h2>
-                    <p class="max-w-xl text-gray-600 mb-6">Aplikasi ini akan memandu Anda melalui seluruh alur kerja penanganan pengaduan. Silakan isi laporan Anda di bawah ini untuk memulai.</p>
+                    <h2 class="text-3xl font-bold mb-2">Simulasi Sistem Pengaduan</h2>
+                    <p class="max-w-xl text-gray-600 mb-6">Masukkan kode di bawah untuk memulai simulasi alur kerja pengaduan interaktif.</p>
                     
-                    <div class="w-full max-w-lg mb-6">
-                        <label for="custom-report-input" class="block text-sm font-medium text-gray-700 mb-2 text-left">Isi Laporan Anda (atau biarkan kosong untuk menggunakan contoh):</label>
-                        <textarea id="custom-report-input" class="w-full p-3 border border-gray-300 rounded-lg h-28 text-sm" placeholder="${defaultComplaintDetail}"></textarea>
+                    <div class="w-full max-w-sm mb-6">
+                        <input type="text" id="simulation-code-input" class="w-full p-3 text-center text-lg font-semibold border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan Kode Simulasi">
+                        <p id="error-message" class="text-red-500 text-sm mt-2 h-5"></p>
                     </div>
 
-                    <button id="start-simulation-btn" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-bold text-lg flex items-center gap-3 transition-transform transform hover:scale-105">
+                    <button id="start-simulation-btn" class="w-full max-w-sm bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-bold text-lg flex items-center gap-3 justify-center transition-transform transform hover:scale-105">
                         <i data-lucide="play" class="w-5 h-5"></i>
                         <span>Mulai Simulasi</span>
                     </button>
+                    <p class="text-xs text-gray-400 mt-4">Gunakan kode: <strong class="font-mono">BPS-SIM-2025</strong></p>
                 </div>
             `;
-            document.getElementById('start-simulation-btn').addEventListener('click', startSimulation);
+            document.getElementById('start-simulation-btn').addEventListener('click', () => {
+                const input = document.getElementById('simulation-code-input');
+                const errorMsg = document.getElementById('error-message');
+                if (input.value.toUpperCase() === 'BPS-SIM-2025') {
+                    startSimulation();
+                } else {
+                    errorMsg.textContent = 'Kode simulasi salah. Coba lagi.';
+                }
+            });
             lucide.createIcons();
         }
 
-        function renderPelaporView(isFinal = false) {
+        function renderInitialReportView() {
+             mainContent.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-center bg-white rounded-2xl shadow-lg p-8">
+                    <div class="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-6">
+                        <i data-lucide="message-square-plus" class="w-12 h-12 text-blue-600"></i>
+                    </div>
+                    <h2 class="text-3xl font-bold mb-2">Langkah 1: Kirim Laporan</h2>
+                    <p class="max-w-xl text-gray-600 mb-6">Silakan isi laporan Anda di bawah ini untuk memulai. Anda bisa menggunakan contoh yang ada atau mengetik laporan versi Anda sendiri.</p>
+                    
+                    <div class="w-full max-w-lg mb-6">
+                        <label for="custom-report-input" class="block text-sm font-medium text-gray-700 mb-2 text-left">Isi Laporan Anda:</label>
+                        <textarea id="custom-report-input" class="w-full p-3 border border-gray-300 rounded-lg h-28 text-sm" placeholder="${defaultComplaintDetail}"></textarea>
+                    </div>
+
+                    <button id="send-complaint-btn" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-bold text-lg flex items-center gap-3 transition-transform transform hover:scale-105">
+                        <i data-lucide="send" class="w-5 h-5"></i>
+                        <span>Kirim Laporan & Lanjutkan</span>
+                    </button>
+                </div>
+            `;
+            document.getElementById('send-complaint-btn').addEventListener('click', () => {
+                const customReport = document.getElementById('custom-report-input').value;
+                if (customReport.trim() !== '') {
+                    state.simulationComplaint.detail = customReport;
+                    state.simulationComplaint.subjek_pengaduan = customReport.substring(0, 50) + '...';
+                } else {
+                    state.simulationComplaint.detail = defaultComplaintDetail;
+                    state.simulationComplaint.subjek_pengaduan = 'Pelayanan tidak ramah di Kantor BPS Kota Medan';
+                }
+                state.currentStep = 1;
+                state.ppidInbox.push({
+                    id: 99,
+                    pengirim: state.simulationComplaint.pelapor,
+                    cuplikan: state.simulationComplaint.detail,
+                    jenis: 'pengaduan'
+                });
+                updateView();
+            });
+            lucide.createIcons();
+        }
+
+        function renderPelaporJawabanView() {
             mainContent.innerHTML = `
-                <div class="max-w-lg mx-auto bg-white rounded-xl shadow-lg p-6 ${state.currentStep === 0 ? 'highlight-card' : ''}">
+                <div class="max-w-lg mx-auto bg-white rounded-xl shadow-lg p-6 highlight-card">
                     <h2 class="text-2xl font-bold text-center mb-1">Tampilan Pelapor</h2>
-                    <p class="text-center text-gray-500 mb-4">Langkah 1 dari 7</p>
+                    <p class="text-center text-gray-500 mb-4">Langkah 6 dari 8</p>
                     <div class="bg-gray-50 p-4 rounded-lg">
                         <div class="w-full max-w-sm mx-auto bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-                            <div class="bg-blue-100 text-blue-800 p-3 rounded-lg ml-auto max-w-xs text-sm mb-4">
-                                ${state.simulationComplaint.detail}
-                            </div>
-                            ${state.currentStep > 0 ? `
-                            <div class="bg-gray-100 text-gray-800 p-3 rounded-lg mr-auto max-w-xs text-sm">
-                                <p class="mb-2">Terima kasih telah menghubungi BPS. Laporan Anda telah kami terima.</p>
-                                <p class="mb-2">Nomor Tiket Anda:<br><strong class="font-bold">${state.simulationComplaint.no_tiket}</strong></p>
-                                <!-- Canvas untuk QR Code -->
-                                <canvas id="qrcode-canvas" class="rounded-md mx-auto mt-2"></canvas>
-                            </div>` : ''}
-                            ${isFinal ? `
                             <div class="bg-gray-100 text-gray-800 p-3 rounded-lg mr-auto max-w-xs text-sm mt-4">
                                 <p class="font-bold mb-2">Jawaban Final:</p>
                                 <p>Terima kasih atas laporan Anda. Kami telah melakukan pembinaan kepada petugas yang bersangkutan dan akan meningkatkan kualitas layanan kami.</p>
                             </div>
-                            ` : ''}
                         </div>
                     </div>
-                    ${state.currentStep === 0 ? `
-                    <div class="text-center mt-6">
-                        <p class="text-gray-600 mb-4">Ini adalah pratinjau pesan yang akan dikirimkan oleh Pelapor melalui WhatsApp.</p>
-                        <button id="send-complaint-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-bold">Kirim Laporan & Lanjutkan</button>
-                    </div>` : ''}
-                    ${isFinal ? `
                     <div class="text-center mt-6">
                          <p class="text-gray-600 mb-4">Pelapor telah menerima jawaban final. Sistem secara otomatis akan mengirimkan tautan survei.</p>
                         <button id="show-survey-btn" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-bold">Lanjutkan ke Survei</button>
                     </div>
-                    ` : ''}
                 </div>
             `;
-            if (state.currentStep > 0) {
-                const canvas = document.getElementById('qrcode-canvas');
-                if (canvas) {
-                    const urlToEncode = `https://bps.go.id/lacak?tiket=${state.simulationComplaint.no_tiket}`;
-                    QRCode.toCanvas(canvas, urlToEncode, { width: 180, margin: 2 }, function (error) {
-                        if (error) console.error(error);
-                    });
-                }
-            }
-            if (state.currentStep === 0) {
-                document.getElementById('send-complaint-btn').addEventListener('click', () => {
-                    state.currentStep = 1;
-                    state.ppidInbox.push({
-                        id: 99,
-                        pengirim: state.simulationComplaint.pelapor,
-                        cuplikan: state.simulationComplaint.detail,
-                        jenis: 'pengaduan'
-                    });
-                    updateView();
-                });
-            }
-            if (isFinal) {
-                 document.getElementById('show-survey-btn').addEventListener('click', () => {
-                    state.currentStep = 6;
-                    updateView();
-                });
-            }
+            document.getElementById('show-survey-btn').addEventListener('click', () => {
+                state.currentStep = 6;
+                updateView();
+            });
         }
         
         function renderPpidDashboard() {
@@ -277,7 +264,7 @@
         }
 
         function renderAdminDashboard(isFinalReview = false) {
-            const dataToShow = isFinalReview ? state.complaints.filter(c => c.id === state.simulationComplaint.id) : state.complaints;
+            const dataToShow = state.complaints;
             mainContent.innerHTML = `
                 <div class="bg-white p-6 rounded-xl shadow-lg ${state.currentStep === 2 || state.currentStep === 4 ? 'highlight-card' : ''}">
                     <h2 class="text-2xl font-bold mb-6">Dashboard Manajemen Pengaduan</h2>
@@ -372,9 +359,9 @@
                         <div>
                             <p class="font-semibold mb-3 text-center">2. Menurut Anda, bagaimana kecepatan layanan kami?</p>
                             <div class="flex flex-col sm:flex-row justify-center gap-3">
-                                <button class="survey-option flex-1 bg-gray-100 text-gray-700 p-3 rounded-lg hover:bg-green-100 hover:text-green-800 border-2 border-transparent focus:border-green-500 focus:bg-green-100">Sangat Cepat</button>
-                                <button class="survey-option flex-1 bg-gray-100 text-gray-700 p-3 rounded-lg hover:bg-green-100 hover:text-green-800 border-2 border-transparent focus:border-green-500 focus:bg-green-100">Cukup Cepat</button>
-                                <button class="survey-option flex-1 bg-gray-100 text-gray-700 p-3 rounded-lg hover:bg-green-100 hover:text-green-800 border-2 border-transparent focus:border-green-500 focus:bg-green-100">Lambat</button>
+                                <button class="survey-option flex-1 bg-gray-100 text-gray-700 p-3 rounded-lg hover:bg-green-100 hover:text-green-800 border-2 border-transparent">Sangat Cepat</button>
+                                <button class="survey-option flex-1 bg-gray-100 text-gray-700 p-3 rounded-lg hover:bg-green-100 hover:text-green-800 border-2 border-transparent">Cukup Cepat</button>
+                                <button class="survey-option flex-1 bg-gray-100 text-gray-700 p-3 rounded-lg hover:bg-green-100 hover:text-green-800 border-2 border-transparent">Lambat</button>
                             </div>
                         </div>
                         <div>
@@ -390,6 +377,18 @@
             `;
             lucide.createIcons();
             setupSurveyInteractions();
+        }
+
+        function renderThankYouView() {
+            mainContent.innerHTML = `
+                 <div class="flex flex-col items-center justify-center h-full text-center bg-white rounded-2xl shadow-lg p-8">
+                    <div class="w-24 h-24 text-7xl mx-auto mb-4">😊</div>
+                    <h2 class="text-3xl font-bold mb-2">Terima Kasih Banyak!</h2>
+                    <p class="max-w-xl text-gray-600 mb-6">Umpan balik Anda telah berhasil dikirim. Masukan Anda sangat berarti untuk perbaikan layanan kami di masa mendatang.</p>
+                    <button id="restart-app-btn" class="w-full max-w-sm bg-gray-200 text-gray-800 px-8 py-3 rounded-lg hover:bg-gray-300 font-bold">Kembali ke Awal</button>
+                </div>
+            `;
+            document.getElementById('restart-app-btn').addEventListener('click', resetSimulation);
         }
 
         function renderAdminActionButtons(item) {
@@ -496,34 +495,49 @@
                     const ratingValue = star.dataset.value;
                     document.getElementById('star-rating').dataset.rating = ratingValue;
                     stars.forEach(s => {
-                        s.classList.remove('selected');
+                        s.classList.remove('selected', 'text-yellow-400');
+                        s.removeAttribute('fill');
                         if(s.dataset.value <= ratingValue) {
-                            s.classList.add('selected');
+                            s.classList.add('selected', 'text-yellow-400');
+                            s.setAttribute('fill', 'currentColor');
                         }
                     });
                 });
             });
             document.querySelectorAll('.survey-option').forEach(btn => {
                 btn.addEventListener('click', () => {
-                     document.querySelectorAll('.survey-option').forEach(b => b.classList.remove('bg-green-100', 'text-green-800', 'border-green-500'));
-                     btn.classList.add('bg-green-100', 'text-green-800', 'border-green-500');
+                     document.querySelectorAll('.survey-option').forEach(b => b.classList.remove('selected'));
+                     btn.classList.add('selected');
                 });
             });
             document.getElementById('submit-survey-btn').addEventListener('click', () => {
-                alert('Terima kasih! Survei Anda telah berhasil dikirim. Masukan Anda sangat berharga bagi kami.');
-                resetSimulation();
+                state.currentStep = 7;
+                updateView();
             });
         }
 
         function updateView() {
             renderTimeline();
-            const currentRole = timelineSteps[state.currentStep].role;
+            const currentStepData = timelineSteps[state.currentStep];
+            if (!currentStepData) {
+                if (state.currentStep === -1) {
+                    renderLoginView();
+                } else if (state.currentStep === 7) {
+                    renderThankYouView();
+                }
+                return;
+            };
+
+            const currentRole = currentStepData.role;
+            
             switch (currentRole) {
                 case 'pelapor':
-                    if (state.currentStep === 6) {
+                    if (state.currentStep === 0) {
+                        renderInitialReportView();
+                    } else if (state.currentStep === 5) {
+                        renderPelaporJawabanView();
+                    } else if (state.currentStep === 6) {
                         renderSurveyView();
-                    } else {
-                        renderPelaporView(state.currentStep === 5);
                     }
                     break;
                 case 'ppid':
@@ -535,27 +549,20 @@
                 case 'sme':
                     renderSmeDashboard();
                     break;
+                case 'selesai':
+                    renderThankYouView();
+                    break;
             }
         }
 
         function startSimulation() {
-            const customReport = document.getElementById('custom-report-input').value;
-            if (customReport.trim() !== '') {
-                state.simulationComplaint.detail = customReport;
-                state.simulationComplaint.subjek_pengaduan = customReport.substring(0, 50) + '...';
-            } else {
-                state.simulationComplaint.detail = defaultComplaintDetail;
-                state.simulationComplaint.subjek_pengaduan = 'Pelayanan tidak ramah di Kantor BPS Kota Medan';
-            }
-
             state.currentStep = 0;
             updateView();
         }
         
         function resetSimulation() {
             state = JSON.parse(JSON.stringify(initialState));
-            renderInitialView();
-            renderTimeline();
+            updateView();
         }
 
         resetButton.addEventListener('click', resetSimulation);
@@ -567,5 +574,4 @@
     </script>
 </body>
 </html>
-
 
