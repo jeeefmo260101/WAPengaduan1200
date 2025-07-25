@@ -97,8 +97,14 @@
                     <span>Lacak Laporan</span>
                 </a>
             </nav>
-            <div id="timeline-container" class="p-5 space-y-2 mt-4 border-t border-gray-700">
+            <div id="timeline-container" class="p-5 space-y-2 mt-4 border-t border-gray-700 flex-1 overflow-y-auto">
                 <!-- Timeline akan dirender di sini -->
+            </div>
+            <div id="reset-button-container" class="p-5 mt-auto hidden">
+                 <button id="reset-button" class="w-full bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 text-sm font-semibold flex items-center justify-center gap-2">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span>Ulangi Simulasi</span>
+                </button>
             </div>
         </aside>
 
@@ -118,6 +124,7 @@
         const initialState = {
             currentView: 'simulation',
             currentStep: -1, // Start before the first step
+            stepTimestamps: [],
             ppidInbox: [],
             complaints: [
                 { id: 2, no_tiket: 'BPS-PENG-2507-002', status: 'Siap Direview', subjek_pengaduan: 'Dugaan pungli oleh oknum petugas', ditugaskan_ke: 'Tim Investigasi', pelapor: '+62857xxxx5678', detail: 'Ada oknum petugas berinisial A yang meminta "uang rokok" untuk mempercepat proses layanan. Mohon ditindaklanjuti.', jawaban_sme: 'Setelah dilakukan pengecekan awal melalui CCTV dan wawancara saksi, kami menemukan indikasi kuat adanya pelanggaran. Tim akan melakukan pemeriksaan lebih lanjut sesuai prosedur internal. Terlampir adalah notulen investigasi awal.', lampiran_sme: 'notulen_investigasi.pdf' },
@@ -154,9 +161,16 @@
         const modalContainer = document.getElementById('modal-container');
         const timelineContainer = document.getElementById('timeline-container');
         const sidebarNav = document.getElementById('sidebar-nav');
+        const resetButton = document.getElementById('reset-button');
+        const resetButtonContainer = document.getElementById('reset-button-container');
         
+        // --- HELPER FUNCTIONS ---
+        const formatTime = (date) => {
+            return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+        }
+
         // --- RENDER FUNCTIONS ---
-        function renderTimeline(steps = timelineSteps, currentStepIndex = state.currentStep) {
+        function renderTimeline(steps = timelineSteps, currentStepIndex = state.currentStep, timestamps = state.stepTimestamps) {
             if (currentStepIndex < 0) {
                  timelineContainer.innerHTML = `<p class="text-sm text-gray-400">Timeline akan muncul saat simulasi berjalan.</p>`;
                  return;
@@ -166,7 +180,10 @@
                     <div class="timeline-dot absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center ${currentStepIndex >= index ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-400'}">
                         <i data-lucide="${currentStepIndex > index ? 'check' : step.icon}" class="w-4 h-4"></i>
                     </div>
-                    <p class="font-semibold ${currentStepIndex === index ? 'text-white' : 'text-gray-400'}">${step.title}</p>
+                    <div>
+                        <p class="font-semibold ${currentStepIndex === index ? 'text-white' : 'text-gray-400'}">${step.title}</p>
+                        ${timestamps[index] ? `<p class="text-xs ${currentStepIndex === index ? 'text-blue-200' : 'text-gray-500'}">${formatTime(timestamps[index])}</p>` : ''}
+                    </div>
                 </div>
             `).join('');
             lucide.createIcons();
@@ -180,10 +197,23 @@
                             <i data-lucide="shield-check" class="w-8 h-8 text-blue-600"></i>
                         </div>
                         <h2 class="text-2xl font-bold mb-2">Simulasi Sistem Pengaduan</h2>
-                        <p class="text-gray-500 mb-6">Pilih fitur yang ingin Anda simulasikan dari menu di sebelah kiri.</p>
+                        <p class="text-gray-500 mb-6">Masukkan kode di bawah untuk memulai simulasi alur kerja pengaduan interaktif.</p>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="simulation-code" class="sr-only">Kode Simulasi</label>
+                                <input type="text" id="simulation-code" class="w-full p-3 text-center text-lg font-semibold border-2 border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Masukkan Kode Simulasi">
+                                <p id="error-message" class="text-red-500 text-sm mt-2 h-4"></p>
+                            </div>
+                            <button id="login-button" class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-bold text-lg flex items-center justify-center gap-3">
+                                <i data-lucide="play" class="w-5 h-5"></i>
+                                <span>Mulai Simulasi</span>
+                            </button>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-4">Gunakan kode: <strong class="font-mono">BPS-SIM-2025</strong></p>
                     </div>
                 </div>
             `;
+            document.getElementById('login-button').addEventListener('click', handleLogin);
             lucide.createIcons();
         }
 
@@ -305,7 +335,7 @@
             }
             if (state.currentStep === 2) {
                 document.getElementById('continue-internal-btn').addEventListener('click', () => {
-                    state.currentStep = 3;
+                    advanceStep();
                     state.ppidInbox.push({
                         id: 99,
                         pengirim: state.simulationComplaint.pelapor,
@@ -317,7 +347,7 @@
             }
             if (isFinal) {
                  document.getElementById('show-survey-btn').addEventListener('click', () => {
-                    state.currentStep = 8;
+                    advanceStep();
                     updateView();
                 });
             }
@@ -466,7 +496,8 @@
                         <p class="text-gray-500 mt-1">Masukkan nomor tiket untuk melihat progres.</p>
                     </div>
                     <div id="tracking-input-container" class="mt-8">
-                        <input type="text" id="ticket-input" class="w-full p-3 text-center text-lg font-semibold border-2 border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Contoh: BPS-PENG-2507-007">
+                        <input type="text" id="ticket-input" class="w-full p-3 text-center text-lg font-semibold border-2 border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan Nomor Tiket Anda">
+                        <p class="text-xs text-gray-400 mt-2 text-center">Contoh: <strong class="font-mono">BPS-PENG-2507-007</strong></p>
                         <button id="track-ticket-btn" class="mt-4 w-full bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-bold">Lacak Tiket</button>
                     </div>
                     <div id="tracking-result-container" class="hidden mt-8">
@@ -475,7 +506,7 @@
                          <div id="tracking-survey-button" class="hidden mt-8 text-center bg-green-50 p-4 rounded-lg border border-green-200">
                             <h3 class="font-bold text-green-800 mb-2">Laporan Anda Telah Selesai!</h3>
                             <p class="text-sm text-green-700 mb-4">Terima kasih atas masukan Anda. Mohon bantu kami menjadi lebih baik dengan mengisi survei singkat.</p>
-                            <button onclick="switchView('survey')" class="w-full bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-semibold flex items-center justify-center gap-2 pulse">
+                            <button onclick="switchView('survey', true)" class="w-full bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-semibold flex items-center justify-center gap-2 pulse">
                                 <i data-lucide="star" class="w-5 h-5"></i>
                                 <span>Klik di Sini untuk Mengisi Survei</span>
                             </button>
@@ -553,7 +584,7 @@
             state.ppidInbox.splice(index, 1);
             const newComplaint = { ...state.simulationComplaint, status: 'Baru' };
             state.complaints.unshift(newComplaint);
-            state.currentStep = 4;
+            advanceStep();
             updateView();
         }
 
@@ -562,7 +593,7 @@
             complaint.status = 'Menunggu Jawaban SME';
             complaint.ditugaskan_ke = 'Tim Kepegawaian';
             modalContainer.innerHTML = '';
-            state.currentStep = 5;
+            advanceStep();
             updateView();
         }
         
@@ -571,7 +602,7 @@
             complaint.status = 'Siap Direview';
             complaint.jawaban_sme = document.getElementById('sme-answer').value;
             modalContainer.innerHTML = '';
-            state.currentStep = 6;
+            advanceStep();
             updateView();
         }
 
@@ -579,7 +610,7 @@
             const complaint = state.complaints.find(c => c.id === id);
             complaint.status = 'Selesai';
             modalContainer.innerHTML = '';
-            state.currentStep = 7;
+            advanceStep();
             updateView();
         }
 
@@ -642,7 +673,7 @@
                 state.simulationComplaint.identitas.alamat = document.getElementById('identity-address').value;
                 // etc.
 
-                state.currentStep = 2; // Move to the next step (WhatsApp view)
+                advanceStep(); // Move to the next step (WhatsApp view)
                 updateView();
             });
         }
@@ -659,9 +690,8 @@
             
             if (state.currentView === 'simulation') {
                 renderTimeline();
-                const currentStepData = timelineSteps[state.currentStep];
-                if (!currentStepData) {
-                    renderInitialView();
+                if (state.currentStep === -1) {
+                    renderLoginView();
                     return;
                 }
                 switch (state.currentStep) {
@@ -678,8 +708,6 @@
             } else if (state.currentView === 'tracking') {
                 timelineContainer.innerHTML = `<p class="text-sm text-gray-400">Mode Pelacakan Aktif.</p>`;
                 renderTrackingView();
-            } else {
-                renderLoginView();
             }
         }
         
@@ -695,12 +723,18 @@
             const trackingTimelineEl = document.getElementById('tracking-timeline');
             const trackingSurveyBtn = document.getElementById('tracking-survey-button');
             let trackingStep = 0;
+            let trackingTimestamps = [];
             
             clearInterval(trackingIntervalId);
             trackingIntervalId = setInterval(() => {
                 trackingTimelineEl.innerHTML = '';
+                const trackingSteps = timelineSteps.slice(2); // Start from "Menerima Tiket"
+                if (!trackingTimestamps[trackingStep]) {
+                    trackingTimestamps[trackingStep] = new Date();
+                }
+
                 for (let i = 0; i <= trackingStep; i++) {
-                    const item = timelineSteps[i+2]; // Start from "Menerima Tiket"
+                    const item = trackingSteps[i];
                     if (!item) continue;
                     const isCompleted = i < trackingStep;
                     const isActive = i === trackingStep;
@@ -712,12 +746,12 @@
                     if (isCompleted) dotClass = 'bg-green-500 text-white';
                     if (isActive) dotClass = 'bg-blue-500 text-white';
 
-                    timelineItem.innerHTML = `<div class="timeline-dot absolute left-0 top-1 w-8 h-8 rounded-full flex items-center justify-center ${dotClass}"><i data-lucide="${isCompleted ? 'check' : item.icon}" class="w-5 h-5"></i></div><div><p class="font-semibold ${isActive ? 'text-blue-600' : ''}">${item.title}</p></div>`;
+                    timelineItem.innerHTML = `<div class="timeline-dot absolute left-0 top-1 w-8 h-8 rounded-full flex items-center justify-center ${dotClass}"><i data-lucide="${isCompleted ? 'check' : item.icon}" class="w-5 h-5"></i></div><div><p class="font-semibold ${isActive ? 'text-blue-600' : ''}">${item.title}</p><p class="text-sm text-gray-500">${formatTime(trackingTimestamps[i])}</p></div>`;
                     trackingTimelineEl.appendChild(timelineItem);
                 }
                 lucide.createIcons();
 
-                if (trackingStep < timelineSteps.length - 3) {
+                if (trackingStep < trackingSteps.length - 1) {
                     trackingStep++;
                 } else {
                     trackingSurveyBtn.classList.remove('hidden');
@@ -726,11 +760,24 @@
             }, 1500);
         }
 
-        function switchView(viewName) {
+        function switchView(viewName, isFromTracking = false) {
             state.currentView = viewName;
-            state.currentStep = -1; // Reset step when switching view
-            clearInterval(trackingIntervalId);
-            updateView();
+            
+            if (isFromTracking) {
+                // Special case for survey from tracking page
+                state.currentStep = 8;
+                updateView();
+            }
+            else {
+                state.currentStep = -1;
+                clearInterval(trackingIntervalId);
+                updateView();
+            }
+        }
+        
+        function advanceStep() {
+            state.currentStep++;
+            state.stepTimestamps[state.currentStep] = new Date();
         }
 
         function startSimulation() {
@@ -743,13 +790,28 @@
                 state.simulationComplaint.subjek_pengaduan = 'Pelayanan tidak ramah di Kantor BPS Kota Medan';
             }
 
-            state.currentStep = 1;
+            advanceStep();
             updateView();
         }
         
         function resetSimulation() {
             state = JSON.parse(JSON.stringify(initialState));
-            switchView('simulation');
+            state.currentView = 'simulation'; // Set default view to simulation
+            state.currentStep = -1;
+            updateView();
+        }
+
+        function handleLogin() {
+            const codeInput = document.getElementById('simulation-code');
+            const errorMsg = document.getElementById('error-message');
+            const CORRECT_CODE = "BPS-SIM-2025";
+            if (codeInput.value.toUpperCase() === CORRECT_CODE) {
+                errorMsg.textContent = '';
+                state.currentStep = 0;
+                updateView();
+            } else {
+                errorMsg.textContent = 'Kode simulasi salah. Silakan coba lagi.';
+            }
         }
 
         sidebarNav.addEventListener('click', (e) => {
@@ -757,15 +819,18 @@
             const targetLink = e.target.closest('.sidebar-item');
             if (targetLink) {
                 const view = targetLink.dataset.view;
-                switchView(view);
+                if (view === 'simulation') {
+                    resetSimulation();
+                } else {
+                    switchView(view);
+                }
             }
         });
         
         // Initial Render
         lucide.createIcons();
-        switchView('simulation');
+        resetSimulation();
 
     </script>
 </body>
 </html>
-
