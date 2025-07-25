@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulasi Dashboard Pengaduan BPS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Library untuk QR Code Generator -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+        }
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .status-baru { background-color: #e0f2fe; color: #0ea5e9; }
+        .status-menunggu-jawaban-sme { background-color: #fef9c3; color: #eab308; }
+        .status-siap-direview { background-color: #dcfce7; color: #22c55e; }
+        .status-selesai { background-color: #f3f4f6; color: #6b7280; }
+        .status-lewat-sla { background-color: #fee2e2; color: #ef4444; }
+        .sidebar-item.active {
+            background-color: #1e40af;
+            color: #ffffff;
+            font-weight: 600;
+        }
+        .modal-overlay {
+            transition: opacity 0.3s ease;
+        }
+        .highlight-card {
+            border: 2px solid #2563eb;
+            box-shadow: 0 0 15px rgba(37, 99, 235, 0.3);
+            transform: scale(1.02);
+            transition: all 0.3s ease-in-out;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: 12px;
+            top: 32px;
+            bottom: 0;
+            width: 2px;
+            background-color: #e5e7eb;
+            z-index: 0;
+        }
+        .timeline-item:last-child::before {
+            display: none;
+        }
+        .timeline-dot {
+            z-index: 1;
+        }
+        .rating .star {
+            cursor: pointer;
+            color: #d1d5db; /* gray-300 */
+            transition: color 0.2s;
+        }
+        .rating .star:hover,
+        .rating .star.selected {
+            color: #facc15; /* yellow-400 */
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div id="app" class="flex flex-col md:flex-row h-screen bg-gray-100">
+        <!-- Sidebar -->
+        <aside class="w-full md:w-72 bg-gray-800 text-white shadow-lg flex-shrink-0">
+            <div class="p-5 border-b border-gray-700">
+                <h1 class="text-xl font-bold">Simulasi Pengaduan</h1>
+                <p class="text-sm text-gray-400">Badan Pusat Statistik</p>
+            </div>
+            <div id="timeline-container" class="p-5 space-y-2">
+                <!-- Timeline akan dirender di sini -->
+            </div>
+            <div class="p-5 mt-auto">
+                 <button id="reset-button" class="w-full bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 text-sm font-semibold flex items-center justify-center gap-2">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span>Ulangi Simulasi</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main id="main-content" class="flex-1 p-4 md:p-8 overflow-y-auto">
+            <!-- Content will be rendered here by JavaScript -->
+        </main>
+    </div>
+
+    <!-- Modal Container -->
+    <div id="modal-container"></div>
+
+
+    <script>
+        // --- INITIAL STATE & DATA SIMULASI ---
+        const defaultComplaintDetail = 'Selamat siang. Saya ingin melaporkan pelayanan di Kantor BPS Kota Medan. Petugas di loket 3 sangat tidak ramah dan tidak mau menjelaskan prosedur dengan baik saat saya bertanya tadi pagi.';
+        const initialState = {
+            currentStep: 0,
+            ppidInbox: [],
+            complaints: [
+                { id: 2, no_tiket: 'BPS-PENG-2507-002', status: 'Siap Direview', subjek_pengaduan: 'Dugaan pungli oleh oknum petugas', ditugaskan_ke: 'Tim Investigasi', pelapor: '+62857xxxx5678', detail: 'Ada oknum petugas berinisial A yang meminta "uang rokok" untuk mempercepat proses layanan. Mohon ditindaklanjuti.', jawaban_sme: 'Setelah dilakukan pengecekan awal melalui CCTV dan wawancara saksi, kami menemukan indikasi kuat adanya pelanggaran. Tim akan melakukan pemeriksaan lebih lanjut sesuai prosedur internal. Terlampir adalah notulen investigasi awal.', lampiran_sme: 'notulen_investigasi.pdf' },
+                { id: 5, no_tiket: 'BPS-PENG-2507-005', status: 'Selesai', subjek_pengaduan: 'Petugas tidak ramah', ditugaskan_ke: 'Tim Kepegawaian', pelapor: '+62813xxxx7890', detail: 'Petugas di loket 3 sangat tidak ramah dan tidak informatif saat saya bertanya.', jawaban_sme: 'Kami telah melakukan pembinaan terhadap petugas yang bersangkutan dan akan meningkatkan pengawasan serta pelatihan layanan pelanggan. Terima kasih atas laporannya.' },
+            ],
+            simulationComplaint: {
+                id: 7,
+                no_tiket: 'BPS-PENG-2507-007',
+                status: 'Belum Ada',
+                subjek_pengaduan: 'Pelayanan tidak ramah di Kantor BPS Kota Medan',
+                ditugaskan_ke: '-',
+                pelapor: '+62812xxxx3344',
+                detail: defaultComplaintDetail
+            }
+        };
+
+        let state = JSON.parse(JSON.stringify(initialState));
+
+        const timelineSteps = [
+            { role: 'pelapor', title: 'Pelapor Mengirim Aduan', icon: 'smartphone' },
+            { role: 'ppid', title: 'PPID Melakukan Klasifikasi', icon: 'inbox' },
+            { role: 'admin', title: 'Admin Melakukan Disposisi', icon: 'send' },
+            { role: 'sme', title: 'SME Menjawab Aduan', icon: 'user-check' },
+            { role: 'admin', title: 'Admin Review & Kirim Jawaban', icon: 'check-circle-2' },
+            { role: 'pelapor', title: 'Pelapor Menerima Jawaban', icon: 'mail-check' },
+            { role: 'pelapor', title: 'Pelapor Mengisi Survei', icon: 'star' }
+        ];
+
+        const mainContent = document.getElementById('main-content');
+        const modalContainer = document.getElementById('modal-container');
+        const timelineContainer = document.getElementById('timeline-container');
+        const resetButton = document.getElementById('reset-button');
+        
+        // --- RENDER FUNCTIONS ---
+
+        function renderTimeline() {
+            timelineContainer.innerHTML = timelineSteps.map((step, index) => `
+                <div class="timeline-item relative pl-10 pb-6">
+                    <div class="timeline-dot absolute left-0 top-1 w-6 h-6 rounded-full flex items-center justify-center ${state.currentStep >= index ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-400'}">
+                        <i data-lucide="${state.currentStep > index ? 'check' : step.icon}" class="w-4 h-4"></i>
+                    </div>
+                    <p class="font-semibold ${state.currentStep === index ? 'text-white' : 'text-gray-400'}">${step.title}</p>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function renderInitialView() {
+            mainContent.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-center bg-white rounded-2xl shadow-lg p-8">
+                    <div class="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-6">
+                        <i data-lucide="play-circle" class="w-12 h-12 text-blue-600"></i>
+                    </div>
+                    <h2 class="text-3xl font-bold mb-2">Selamat Datang di Simulasi Pengaduan BPS</h2>
+                    <p class="max-w-xl text-gray-600 mb-6">Aplikasi ini akan memandu Anda melalui seluruh alur kerja penanganan pengaduan. Silakan isi laporan Anda di bawah ini untuk memulai.</p>
+                    
+                    <div class="w-full max-w-lg mb-6">
+                        <label for="custom-report-input" class="block text-sm font-medium text-gray-700 mb-2 text-left">Isi Laporan Anda (atau biarkan kosong untuk menggunakan contoh):</label>
+                        <textarea id="custom-report-input" class="w-full p-3 border border-gray-300 rounded-lg h-28 text-sm" placeholder="${defaultComplaintDetail}"></textarea>
+                    </div>
+
+                    <button id="start-simulation-btn" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-bold text-lg flex items-center gap-3 transition-transform transform hover:scale-105">
+                        <i data-lucide="play" class="w-5 h-5"></i>
+                        <span>Mulai Simulasi</span>
+                    </button>
+                </div>
+            `;
+            document.getElementById('start-simulation-btn').addEventListener('click', startSimulation);
+            lucide.createIcons();
+        }
+
+        function renderPelaporView(isFinal = false) {
+            mainContent.innerHTML = `
+                <div class="max-w-lg mx-auto bg-white rounded-xl shadow-lg p-6 ${state.currentStep === 0 ? 'highlight-card' : ''}">
+                    <h2 class="text-2xl font-bold text-center mb-1">Tampilan Pelapor</h2>
+                    <p class="text-center text-gray-500 mb-4">Langkah 1 dari 7</p>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <div class="w-full max-w-sm mx-auto bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+                            <div class="bg-blue-100 text-blue-800 p-3 rounded-lg ml-auto max-w-xs text-sm mb-4">
+                                ${state.simulationComplaint.detail}
+                            </div>
+                            ${state.currentStep > 0 ? `
+                            <div class="bg-gray-100 text-gray-800 p-3 rounded-lg mr-auto max-w-xs text-sm">
+                                <p class="mb-2">Terima kasih telah menghubungi BPS. Laporan Anda telah kami terima.</p>
+                                <p class="mb-2">Nomor Tiket Anda:<br><strong class="font-bold">${state.simulationComplaint.no_tiket}</strong></p>
+                                <!-- Canvas untuk QR Code -->
+                                <canvas id="qrcode-canvas" class="rounded-md mx-auto mt-2"></canvas>
+                            </div>` : ''}
+                            ${isFinal ? `
+                            <div class="bg-gray-100 text-gray-800 p-3 rounded-lg mr-auto max-w-xs text-sm mt-4">
+                                <p class="font-bold mb-2">Jawaban Final:</p>
+                                <p>Terima kasih atas laporan Anda. Kami telah melakukan pembinaan kepada petugas yang bersangkutan dan akan meningkatkan kualitas layanan kami.</p>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ${state.currentStep === 0 ? `
+                    <div class="text-center mt-6">
+                        <p class="text-gray-600 mb-4">Ini adalah pratinjau pesan yang akan dikirimkan oleh Pelapor melalui WhatsApp.</p>
+                        <button id="send-complaint-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-bold">Kirim Laporan & Lanjutkan</button>
+                    </div>` : ''}
+                    ${isFinal ? `
+                    <div class="text-center mt-6">
+                         <p class="text-gray-600 mb-4">Pelapor telah menerima jawaban final. Sistem secara otomatis akan mengirimkan tautan survei.</p>
+                        <button id="show-survey-btn" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-bold">Lanjutkan ke Survei</button>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+            if (state.currentStep > 0) {
+                const canvas = document.getElementById('qrcode-canvas');
+                if (canvas) {
+                    const urlToEncode = `https://bps.go.id/lacak?tiket=${state.simulationComplaint.no_tiket}`;
+                    QRCode.toCanvas(canvas, urlToEncode, { width: 180, margin: 2 }, function (error) {
+                        if (error) console.error(error);
+                    });
+                }
+            }
+            if (state.currentStep === 0) {
+                document.getElementById('send-complaint-btn').addEventListener('click', () => {
+                    state.currentStep = 1;
+                    state.ppidInbox.push({
+                        id: 99,
+                        pengirim: state.simulationComplaint.pelapor,
+                        cuplikan: state.simulationComplaint.detail,
+                        jenis: 'pengaduan'
+                    });
+                    updateView();
+                });
+            }
+            if (isFinal) {
+                 document.getElementById('show-survey-btn').addEventListener('click', () => {
+                    state.currentStep = 6;
+                    updateView();
+                });
+            }
+        }
+        
+        function renderPpidDashboard() {
+            mainContent.innerHTML = `
+                <div class="bg-white p-6 rounded-xl shadow-lg ${state.currentStep === 1 ? 'highlight-card' : ''}">
+                    <div class="flex justify-between items-center mb-6 border-b pb-4">
+                        <h2 class="text-2xl font-bold">Dashboard Verifikator - PPID</h2>
+                        <div class="bg-blue-100 text-blue-800 font-bold py-2 px-4 rounded-full">
+                            ${state.ppidInbox.length} Pesan Baru
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        ${state.ppidInbox.map((msg, index) => `
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center bg-gray-50 p-4 rounded-lg">
+                                <div class="font-medium">${msg.pengirim}</div>
+                                <div class="text-gray-600 text-sm">${msg.cuplikan}</div>
+                                <div class="flex justify-start md:justify-center gap-2">
+                                    <button onclick="handlePpidAction(${index})" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 text-sm font-semibold flex items-center gap-2">
+                                        <i data-lucide="arrow-right-circle" class="w-4 h-4"></i>
+                                        <span>Jadikan Pengaduan</span>
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    ${state.currentStep === 1 ? `
+                    <div class="text-center mt-6 bg-blue-50 p-4 rounded-lg">
+                        <p class="text-gray-600 mb-4">Laporan dari pelapor masuk ke inbox PPID. Petugas PPID harus mengklasifikasikannya.</p>
+                        <p class="font-semibold">Klik tombol "Jadikan Pengaduan" untuk melanjutkan.</p>
+                    </div>` : ''}
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function renderAdminDashboard(isFinalReview = false) {
+            const dataToShow = isFinalReview ? state.complaints.filter(c => c.id === state.simulationComplaint.id) : state.complaints;
+            mainContent.innerHTML = `
+                <div class="bg-white p-6 rounded-xl shadow-lg ${state.currentStep === 2 || state.currentStep === 4 ? 'highlight-card' : ''}">
+                    <h2 class="text-2xl font-bold mb-6">Dashboard Manajemen Pengaduan</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-gray-50 text-gray-500 uppercase text-xs">
+                                <tr><th class="p-3">No. Tiket</th><th class="p-3">Status</th><th class="p-3">Subjek Pengaduan</th><th class="p-3">Ditugaskan ke</th><th class="p-3 text-center">Aksi</th></tr>
+                            </thead>
+                            <tbody>
+                                ${dataToShow.map(item => `
+                                    <tr class="border-b hover:bg-gray-50 ${item.id === state.simulationComplaint.id ? 'bg-blue-50' : ''}">
+                                        <td class="p-3 font-medium">${item.no_tiket}</td>
+                                        <td class="p-3"><span class="status-badge status-${item.status.toLowerCase().replace(/ /g, '-')}">${item.status}</span></td>
+                                        <td class="p-3">${item.subjek_pengaduan}</td>
+                                        <td class="p-3">${item.ditugaskan_ke}</td>
+                                        <td class="p-3 text-center">
+                                            ${renderAdminActionButtons(item)}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                     ${state.currentStep === 2 ? `
+                    <div class="text-center mt-6 bg-blue-50 p-4 rounded-lg">
+                        <p class="text-gray-600 mb-4">Pengaduan baru muncul di dashboard Admin. Admin harus mendisposisikannya ke tim yang tepat.</p>
+                        <p class="font-semibold">Klik tombol "Disposisi" pada laporan baru untuk melanjutkan.</p>
+                    </div>` : ''}
+                     ${state.currentStep === 4 ? `
+                    <div class="text-center mt-6 bg-blue-50 p-4 rounded-lg">
+                        <p class="text-gray-600 mb-4">Jawaban dari SME telah masuk. Admin harus mereview dan mengirimkan jawaban final ke pelapor.</p>
+                        <p class="font-semibold">Klik tombol "Review & Jawab" untuk melanjutkan.</p>
+                    </div>` : ''}
+                </div>
+            `;
+            lucide.createIcons();
+        }
+        
+        function renderSmeDashboard() {
+            const smeTasks = state.complaints.filter(c => c.status === 'Menunggu Jawaban SME' && c.id === state.simulationComplaint.id);
+            mainContent.innerHTML = `
+                 <div class="bg-white p-6 rounded-xl shadow-lg ${state.currentStep === 3 ? 'highlight-card' : ''}">
+                    <div class="flex justify-between items-center mb-6 border-b pb-4">
+                        <h2 class="text-2xl font-bold">Dashboard Tugas - SME</h2>
+                    </div>
+                    <div class="space-y-4">
+                        ${smeTasks.length > 0 ? smeTasks.map(task => `
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-center bg-gray-50 p-4 rounded-lg">
+                                <div class="font-medium">${task.no_tiket}</div>
+                                <div class="text-gray-600 text-sm">${task.subjek_pengaduan}</div>
+                                <div class="text-center">
+                                    <button onclick="openSmeModal(${task.id})" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 text-sm font-semibold flex items-center gap-2 mx-auto">
+                                        <i data-lucide="edit" class="w-4 h-4"></i>
+                                        <span>Jawab Sekarang</span>
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('') : '<p class="text-center text-gray-500 py-8">Tidak ada tugas saat ini.</p>'}
+                    </div>
+                    ${state.currentStep === 3 ? `
+                    <div class="text-center mt-6 bg-blue-50 p-4 rounded-lg">
+                        <p class="text-gray-600 mb-4">Tim Kepegawaian (SME) menerima tugas. Mereka harus melakukan investigasi dan memberikan jawaban.</p>
+                        <p class="font-semibold">Klik "Jawab Sekarang" untuk membuka form jawaban.</p>
+                    </div>` : ''}
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function renderSurveyView() {
+             mainContent.innerHTML = `
+                <div class="max-w-lg mx-auto bg-white rounded-xl shadow-lg p-8 ${state.currentStep === 6 ? 'highlight-card' : ''}">
+                    <div class="text-center">
+                        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4 mx-auto">
+                            <i data-lucide="award" class="w-8 h-8 text-green-600"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold">Survei Kepuasan Layanan</h2>
+                        <p class="text-gray-500 mt-1">Tiket: ${state.simulationComplaint.no_tiket}</p>
+                    </div>
+                    
+                    <div class="mt-8 space-y-6">
+                        <div>
+                            <p class="font-semibold mb-3 text-center">1. Seberapa puaskah Anda dengan penanganan laporan Anda?</p>
+                            <div id="star-rating" class="rating flex justify-center text-4xl" data-rating="0">
+                                <i data-lucide="star" class="star" data-value="1"></i>
+                                <i data-lucide="star" class="star" data-value="2"></i>
+                                <i data-lucide="star" class="star" data-value="3"></i>
+                                <i data-lucide="star" class="star" data-value="4"></i>
+                                <i data-lucide="star" class="star" data-value="5"></i>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="font-semibold mb-3 text-center">2. Menurut Anda, bagaimana kecepatan layanan kami?</p>
+                            <div class="flex flex-col sm:flex-row justify-center gap-3">
+                                <button class="survey-option flex-1 bg-gray-100 text-gray-700 p-3 rounded-lg hover:bg-green-100 hover:text-green-800 border-2 border-transparent focus:border-green-500 focus:bg-green-100">Sangat Cepat</button>
+                                <button class="survey-option flex-1 bg-gray-100 text-gray-700 p-3 rounded-lg hover:bg-green-100 hover:text-green-800 border-2 border-transparent focus:border-green-500 focus:bg-green-100">Cukup Cepat</button>
+                                <button class="survey-option flex-1 bg-gray-100 text-gray-700 p-3 rounded-lg hover:bg-green-100 hover:text-green-800 border-2 border-transparent focus:border-green-500 focus:bg-green-100">Lambat</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="survey-comment" class="font-semibold mb-3 text-center block">3. Apakah ada masukan lain untuk kami?</label>
+                            <textarea id="survey-comment" class="w-full p-3 border border-gray-300 rounded-lg h-24 text-sm" placeholder="Tuliskan saran atau kritik Anda di sini..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="text-center mt-8">
+                        <button id="submit-survey-btn" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 font-bold">Kirim Survei</button>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+            setupSurveyInteractions();
+        }
+
+        function renderAdminActionButtons(item) {
+            if (item.id !== state.simulationComplaint.id) return `<span class="text-gray-400 text-sm">N/A</span>`;
+            switch (item.status) {
+                case 'Baru':
+                    return `<button onclick="openDisposisiModal(${item.id})" class="bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600 text-sm font-semibold">Disposisi</button>`;
+                case 'Siap Direview':
+                    return `<button onclick="openReviewModal(${item.id})" class="bg-green-500 text-white px-3 py-1 rounded-lg hover:bg-green-600 text-sm font-semibold">Review & Jawab</button>`;
+                default:
+                    return `<span class="text-gray-400 text-sm">Menunggu</span>`;
+            }
+        }
+
+        // --- MODAL & ACTION HANDLERS ---
+        window.openDisposisiModal = (id) => {
+            const complaint = state.complaints.find(c => c.id === id);
+            modalContainer.innerHTML = `
+                <div class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                    <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+                        <h3 class="text-xl font-bold mb-4">Disposisi Tiket: ${complaint.no_tiket}</h3>
+                        <p class="mb-4 bg-gray-50 p-3 rounded-md text-sm">"${complaint.detail}"</p>
+                        <label for="sme-select" class="block text-sm font-medium text-gray-700 mb-2">Tugaskan ke:</label>
+                        <select id="sme-select" class="w-full p-2 border border-gray-300 rounded-md"><option>Tim Kepegawaian</option></select>
+                        <div class="flex justify-end gap-4 mt-6">
+                            <button onclick="handleDisposisi(${id})" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-semibold">Kirim Disposisi</button>
+                        </div>
+                    </div>
+                </div>`;
+        }
+        
+        window.openReviewModal = (id) => {
+             const complaint = state.complaints.find(c => c.id === id);
+             modalContainer.innerHTML = `
+                <div class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                    <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6">
+                        <h3 class="text-xl font-bold mb-4">Review & Kirim Jawaban</h3>
+                        <div class="space-y-4">
+                            <div><h4 class="font-semibold">Pengaduan Asli:</h4><p class="bg-gray-50 p-3 rounded-md text-sm mt-1">"${complaint.detail}"</p></div>
+                            <div><h4 class="font-semibold">Jawaban dari SME (${complaint.ditugaskan_ke}):</h4><p class="bg-blue-50 p-3 rounded-md text-sm mt-1">"${complaint.jawaban_sme}"</p></div>
+                            <div><h4 class="font-semibold">Jawaban Final untuk Pelapor:</h4><textarea id="final-answer" class="w-full p-2 border border-gray-300 rounded-md mt-1 h-24 text-sm">Terima kasih atas laporan Anda. Kami telah melakukan pembinaan kepada petugas yang bersangkutan dan akan meningkatkan kualitas layanan kami.</textarea></div>
+                        </div>
+                        <div class="flex justify-end gap-4 mt-6">
+                            <button onclick="handleSendAnswer(${id})" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-semibold">Kirim Jawaban Akhir</button>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        window.openSmeModal = (id) => {
+            const complaint = state.complaints.find(c => c.id === id);
+            modalContainer.innerHTML = `
+                <div class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+                    <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-xl p-6">
+                        <h3 class="text-xl font-bold mb-4">Jawab Pengaduan: ${complaint.no_tiket}</h3>
+                        <div><h4 class="font-semibold">Detail Pengaduan:</h4><p class="bg-gray-50 p-3 rounded-md text-sm mt-1">"${complaint.detail}"</p></div>
+                        <div class="mt-4"><label for="sme-answer" class="block text-sm font-medium mb-2">Jawaban Anda:</label><textarea id="sme-answer" class="w-full p-2 border rounded-md mt-1 h-24 text-sm">Telah dilakukan konfirmasi dan pembinaan langsung kepada petugas yang bersangkutan. Kami memohon maaf atas ketidaknyamanan yang terjadi. Sebagai tindak lanjut, kami akan mengadakan sesi penyegaran kembali mengenai standar pelayanan pelanggan untuk seluruh staf frontliner minggu depan.</textarea></div>
+                        <div class="flex justify-end gap-4 mt-6">
+                            <button onclick="handleSmeSubmit(${id})" class="bg-yellow-500 text-white px-6 py-2 rounded-lg hover:bg-yellow-600 font-semibold">Submit Jawaban ke Admin</button>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        window.handlePpidAction = (index) => {
+            state.ppidInbox.splice(index, 1);
+            const newComplaint = { ...state.simulationComplaint, status: 'Baru' };
+            state.complaints.unshift(newComplaint);
+            state.currentStep = 2;
+            updateView();
+        }
+
+        window.handleDisposisi = (id) => {
+            const complaint = state.complaints.find(c => c.id === id);
+            complaint.status = 'Menunggu Jawaban SME';
+            complaint.ditugaskan_ke = 'Tim Kepegawaian';
+            modalContainer.innerHTML = '';
+            state.currentStep = 3;
+            updateView();
+        }
+        
+        window.handleSmeSubmit = (id) => {
+            const complaint = state.complaints.find(c => c.id === id);
+            complaint.status = 'Siap Direview';
+            complaint.jawaban_sme = document.getElementById('sme-answer').value;
+            modalContainer.innerHTML = '';
+            state.currentStep = 4;
+            updateView();
+        }
+
+        window.handleSendAnswer = (id) => {
+            const complaint = state.complaints.find(c => c.id === id);
+            complaint.status = 'Selesai';
+            modalContainer.innerHTML = '';
+            state.currentStep = 5;
+            updateView();
+        }
+
+        // --- SURVEY & MAIN APP LOGIC ---
+        function setupSurveyInteractions() {
+            const stars = document.querySelectorAll('#star-rating .star');
+            stars.forEach(star => {
+                star.addEventListener('click', () => {
+                    const ratingValue = star.dataset.value;
+                    document.getElementById('star-rating').dataset.rating = ratingValue;
+                    stars.forEach(s => {
+                        s.classList.remove('selected');
+                        if(s.dataset.value <= ratingValue) {
+                            s.classList.add('selected');
+                        }
+                    });
+                });
+            });
+            document.querySelectorAll('.survey-option').forEach(btn => {
+                btn.addEventListener('click', () => {
+                     document.querySelectorAll('.survey-option').forEach(b => b.classList.remove('bg-green-100', 'text-green-800', 'border-green-500'));
+                     btn.classList.add('bg-green-100', 'text-green-800', 'border-green-500');
+                });
+            });
+            document.getElementById('submit-survey-btn').addEventListener('click', () => {
+                alert('Terima kasih! Survei Anda telah berhasil dikirim. Masukan Anda sangat berharga bagi kami.');
+                resetSimulation();
+            });
+        }
+
+        function updateView() {
+            renderTimeline();
+            const currentRole = timelineSteps[state.currentStep].role;
+            switch (currentRole) {
+                case 'pelapor':
+                    if (state.currentStep === 6) {
+                        renderSurveyView();
+                    } else {
+                        renderPelaporView(state.currentStep === 5);
+                    }
+                    break;
+                case 'ppid':
+                    renderPpidDashboard();
+                    break;
+                case 'admin':
+                    renderAdminDashboard(state.currentStep === 4);
+                    break;
+                case 'sme':
+                    renderSmeDashboard();
+                    break;
+            }
+        }
+
+        function startSimulation() {
+            const customReport = document.getElementById('custom-report-input').value;
+            if (customReport.trim() !== '') {
+                state.simulationComplaint.detail = customReport;
+                state.simulationComplaint.subjek_pengaduan = customReport.substring(0, 50) + '...';
+            } else {
+                state.simulationComplaint.detail = defaultComplaintDetail;
+                state.simulationComplaint.subjek_pengaduan = 'Pelayanan tidak ramah di Kantor BPS Kota Medan';
+            }
+
+            state.currentStep = 0;
+            updateView();
+        }
+        
+        function resetSimulation() {
+            state = JSON.parse(JSON.stringify(initialState));
+            renderInitialView();
+            renderTimeline();
+        }
+
+        resetButton.addEventListener('click', resetSimulation);
+        
+        // Initial Render
+        lucide.createIcons();
+        resetSimulation();
+
+    </script>
+</body>
+</html>
+
+
